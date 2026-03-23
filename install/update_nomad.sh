@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# Project N.O.M.A.D. Update Script
+# Project N.O.M.A.D. Update Script (macOS)
 
 ###################################################################################################################################################################################################
 
-# Script                | Project N.O.M.A.D. Update Script
+# Script                | Project N.O.M.A.D. Update Script (macOS)
 # Version               | 1.0.1
 # Author                | Crosstalk Solutions, LLC
 # Website               | https://crosstalksolutions.com
@@ -22,22 +22,22 @@ GRAY_R='\033[39m'
 RED='\033[1;31m' # Light Red.
 GREEN='\033[1;32m' # Light Green.
 
+NOMAD_DIR="$HOME/project-nomad"
+
 ###################################################################################################################################################################################################
 #                                                                                                                                                                                                 #
 #                                                                                           Functions                                                                                             #
 #                                                                                                                                                                                                 #
 ###################################################################################################################################################################################################
 
-check_has_sudo() {
-  if sudo -n true 2>/dev/null; then
-    echo -e "${GREEN}#${RESET} User has sudo permissions.\\n"
-  else
-    echo "User does not have sudo permissions"
+check_is_macos() {
+  if [[ "$(uname -s)" != "Darwin" ]]; then
     header_red
-    echo -e "${RED}#${RESET} This script requires sudo permissions to run. Please run the script with sudo.\\n"
-    echo -e "${RED}#${RESET} For example: sudo bash $(basename "$0")"
+    echo -e "${RED}#${RESET} This script is designed to run on macOS only.\\n"
+    echo -e "${RED}#${RESET} Please run this script on a macOS system and try again."
     exit 1
   fi
+  echo -e "${GREEN}#${RESET} This script is running on macOS.\\n"
 }
 
 check_is_bash() {
@@ -48,16 +48,6 @@ check_is_bash() {
     exit 1
   fi
     echo -e "${GREEN}#${RESET} This script is running in bash.\\n"
-}
-
-check_is_debian_based() {
-  if [[ ! -f /etc/debian_version ]]; then
-    header_red
-    echo -e "${RED}#${RESET} This script is designed to run on Debian-based systems only.\\n"
-    echo -e "${RED}#${RESET} Please run this script on a Debian-based system and try again."
-    exit 1
-  fi
-    echo -e "${GREEN}#${RESET} This script is running on a Debian-based system.\\n"
 }
 
 get_update_confirmation(){
@@ -84,13 +74,10 @@ ensure_docker_installed_and_running() {
     exit 1
   fi
 
-  if ! systemctl is-active --quiet docker; then
-    echo -e "${RED}#${RESET} Docker is not running. Attempting to start Docker..."
-    sudo systemctl start docker
-    if ! systemctl is-active --quiet docker; then
-      echo -e "${RED}#${RESET} Failed to start Docker. Please start Docker and try again."
-      exit 1
-    fi
+  if ! docker info &>/dev/null; then
+    echo -e "${RED}#${RESET} Docker is not running. Please open Docker Desktop and wait for it to start, then try again."
+    echo -e "${YELLOW}#${RESET} You can open it with: ${WHITE_R}open -a Docker${RESET}"
+    exit 1
   fi
 }
 
@@ -99,44 +86,56 @@ check_docker_compose() {
   if ! docker compose version &>/dev/null; then
     echo -e "${RED}#${RESET} Docker Compose v2 is not installed or not available as a Docker plugin."
     echo -e "${YELLOW}#${RESET} This script requires 'docker compose' (v2), not 'docker-compose' (v1)."
-    echo -e "${YELLOW}#${RESET} Please read the Docker documentation at https://docs.docker.com/compose/install/ for instructions on how to install Docker Compose v2."
+    echo -e "${YELLOW}#${RESET} Docker Desktop for Mac should include Docker Compose v2. Please ensure Docker Desktop is up to date."
     exit 1
   fi
 }
 
 ensure_docker_compose_file_exists() {
-  if [ ! -f "/opt/project-nomad/compose.yml" ]; then
-    echo -e "${RED}#${RESET} compose.yml file not found. Please ensure it exists at /opt/project-nomad/compose.yml."
+  if [ ! -f "${NOMAD_DIR}/compose.yml" ]; then
+    echo -e "${RED}#${RESET} compose.yml file not found. Please ensure it exists at ${NOMAD_DIR}/compose.yml."
     exit 1
   fi
 }
 
 force_recreate() {
   echo -e "${YELLOW}#${RESET} Pulling the latest Docker images..."
-  if ! docker compose -p project-nomad -f /opt/project-nomad/compose.yml pull; then
+  if ! docker compose -p project-nomad -f "${NOMAD_DIR}/compose.yml" pull; then
     echo -e "${RED}#${RESET} Failed to pull the latest Docker images. Please check your network connection and the Docker registry status, then try again."
     exit 1
   fi
-  
+
   echo -e "${YELLOW}#${RESET} Forcing recreation of containers..."
-  if ! docker compose -p project-nomad -f /opt/project-nomad/compose.yml up -d --force-recreate; then
+  if ! docker compose -p project-nomad -f "${NOMAD_DIR}/compose.yml" up -d --force-recreate; then
     echo -e "${RED}#${RESET} Failed to recreate containers. Please check the Docker logs for more details."
     exit 1
   fi
 }
 
 get_local_ip() {
-  local_ip_address=$(hostname -I | awk '{print $1}')
+  # Try the primary interface first (en0 is typically WiFi or Ethernet on Mac)
+  local_ip_address=$(ipconfig getifaddr en0 2>/dev/null)
+
+  # Fallback: try en1
+  if [[ -z "$local_ip_address" ]]; then
+    local_ip_address=$(ipconfig getifaddr en1 2>/dev/null)
+  fi
+
+  # Fallback: parse ifconfig for any non-loopback IPv4 address
+  if [[ -z "$local_ip_address" ]]; then
+    local_ip_address=$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -1)
+  fi
+
   if [[ -z "$local_ip_address" ]]; then
     echo -e "${RED}#${RESET} Unable to determine local IP address. Please check your network configuration."
-    # Don't exit if we can't determine the local IP address, it's not critical for the installation
+    # Don't exit if we can't determine the local IP address, it's not critical for the update
   fi
 }
 
 success_message() {
-  echo -e "${GREEN}#${RESET} Project N.O.M.A.D installation completed successfully!\\n"
-  echo -e "${GREEN}#${RESET} Installation files are located at /opt/project-nomad\\n\n"
-  echo -e "${GREEN}#${RESET} Project N.O.M.A.D's Command Center should automatically start whenever your device reboots. However, if you need to start it manually, you can always do so by running: ${WHITE_R}${nomad_dir}/start_nomad.sh${RESET}\\n"
+  echo -e "${GREEN}#${RESET} Project N.O.M.A.D update completed successfully!\\n"
+  echo -e "${GREEN}#${RESET} Installation files are located at ${NOMAD_DIR}\\n\n"
+  echo -e "${GREEN}#${RESET} Containers will restart automatically as long as Docker Desktop is running.\\n"
   echo -e "${GREEN}#${RESET} You can now access the management interface at http://localhost:8080 or http://${local_ip_address}:8080\\n"
   echo -e "${GREEN}#${RESET} Thank you for supporting Project N.O.M.A.D!\\n"
 }
@@ -148,9 +147,8 @@ success_message() {
 ###################################################################################################################################################################################################
 
 # Pre-flight checks
-check_is_debian_based
+check_is_macos
 check_is_bash
-check_has_sudo
 
 # Main update
 get_update_confirmation

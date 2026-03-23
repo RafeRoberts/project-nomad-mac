@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Project N.O.M.A.D. - One-Time Updater Fix Script
+# Project N.O.M.A.D. - One-Time Updater Fix Script (macOS)
 #
-# Script                | Project N.O.M.A.D. One-Time Updater Fix Script
+# Script                | Project N.O.M.A.D. One-Time Updater Fix Script (macOS)
 # Version               | 1.0.0
 # Author                | Crosstalk Solutions, LLC
 # Website               | https://crosstalksolutions.com
@@ -40,7 +40,7 @@ WHITE_R='\033[39m'
 # Constants
 ###############################################################################
 
-NOMAD_DIR="/opt/project-nomad"
+NOMAD_DIR="$HOME/project-nomad"
 COMPOSE_FILE="${NOMAD_DIR}/compose.yml"
 SIDECAR_DIR="${NOMAD_DIR}/sidecar-updater"
 COMPOSE_PROJECT_NAME="project-nomad"
@@ -72,23 +72,13 @@ check_confirmation() {
   echo -e "${GREEN}#${RESET} Confirmation received. Proceeding with fixes...\n"
 }
 
-check_has_sudo() {
-  if sudo -n true 2>/dev/null; then
-    echo -e "${GREEN}#${RESET} Sudo permissions confirmed.\n"
-  else
-    echo -e "${RED}#${RESET} This script requires sudo permissions."
-    echo -e "${RED}#${RESET} Example: sudo bash $(basename "$0")"
-    exit 1
-  fi
-}
-
 check_docker_running() {
   if ! command -v docker &>/dev/null; then
     echo -e "${RED}#${RESET} Docker is not installed. Cannot proceed."
     exit 1
   fi
-  if ! systemctl is-active --quiet docker; then
-    echo -e "${RED}#${RESET} Docker is not running. Please start Docker and try again."
+  if ! docker info &>/dev/null; then
+    echo -e "${RED}#${RESET} Docker is not running. Please open Docker Desktop and try again."
     exit 1
   fi
   echo -e "${GREEN}#${RESET} Docker is running.\n"
@@ -135,7 +125,7 @@ fix_sidecar_volume_mount() {
   fi
 
   echo -e "${YELLOW}#${RESET} Removing :ro restriction from sidecar volume mount in compose.yml..."
-  sed -i 's|/opt/project-nomad:/opt/project-nomad:ro.*|/opt/project-nomad:/opt/project-nomad # Writable access required so the updater can set the correct image tag in compose.yml|' "$COMPOSE_FILE"
+  sed -i '' 's|/opt/project-nomad:/opt/project-nomad:ro.*|/opt/project-nomad:/opt/project-nomad # Writable access required so the updater can set the correct image tag in compose.yml|' "$COMPOSE_FILE"
 
   if grep -q '/opt/project-nomad:/opt/project-nomad:ro' "$COMPOSE_FILE"; then
     echo -e "${RED}#${RESET} Failed to remove :ro from compose.yml. Please update it manually:"
@@ -215,7 +205,6 @@ echo -e "${GREEN}#${RESET}         Project N.O.M.A.D. — One-Time Updater Fix S
 echo -e "${GREEN}#########################################################################${RESET}\n"
 
 check_is_bash
-check_has_sudo
 check_confirmation
 check_docker_running
 check_compose_file

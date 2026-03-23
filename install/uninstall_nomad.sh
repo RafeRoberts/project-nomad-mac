@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# Project N.O.M.A.D. Uninstall Script
+# Project N.O.M.A.D. Uninstall Script (macOS)
 
 ###################################################################################################################################################################################################
 
-# Script                | Project N.O.M.A.D. Uninstall Script
+# Script                | Project N.O.M.A.D. Uninstall Script (macOS)
 # Version               | 1.0.0
 # Author                | Crosstalk Solutions, LLC
 # Website               | https://crosstalksolutions.com
@@ -15,7 +15,7 @@
 #                                                                                                                                                                                                 #
 ###################################################################################################################################################################################################
 
-NOMAD_DIR="/opt/project-nomad"
+NOMAD_DIR="$HOME/project-nomad"
 MANAGEMENT_COMPOSE_FILE="${NOMAD_DIR}/compose.yml"
 
 ###################################################################################################################################################################################################
@@ -24,17 +24,10 @@ MANAGEMENT_COMPOSE_FILE="${NOMAD_DIR}/compose.yml"
 #                                                                                                                                                                                                 #
 ###################################################################################################################################################################################################
 
-check_has_sudo() {
-  if sudo -n true 2>/dev/null; then
-    echo -e "${GREEN}#${RESET} User has sudo permissions.\\n"
-  else
-    echo "User does not have sudo permissions"
-    header_red
-    echo -e "${RED}#${RESET} This script requires sudo permissions to run. Please run the script with sudo.\\n"
-    echo -e "${RED}#${RESET} For example: sudo bash $(basename "$0")"
-    exit 1
-  fi
-}
+RESET='\033[0m'
+YELLOW='\033[1;33m'
+RED='\033[1;31m'
+GREEN='\033[1;32m'
 
 check_current_directory(){
   if [ "$(pwd)" == "${NOMAD_DIR}" ]; then
@@ -46,6 +39,23 @@ check_current_directory(){
 ensure_management_compose_file_exists(){
   if [ ! -f "${MANAGEMENT_COMPOSE_FILE}" ]; then
     echo "Unable to find the management Docker Compose file at ${MANAGEMENT_COMPOSE_FILE}. There may be a problem with your Project N.O.M.A.D. installation."
+    exit 1
+  fi
+}
+
+ensure_docker_installed() {
+    if ! command -v docker &> /dev/null; then
+        echo "Unable to find Docker. There may be a problem with your Docker installation."
+        exit 1
+    fi
+}
+
+check_docker_compose() {
+  # Check if 'docker compose' (v2 plugin) is available
+  if ! docker compose version &>/dev/null; then
+    echo -e "${RED}#${RESET} Docker Compose v2 is not installed or not available as a Docker plugin."
+    echo -e "${YELLOW}#${RESET} This script requires 'docker compose' (v2), not 'docker-compose' (v1)."
+    echo -e "${YELLOW}#${RESET} Docker Desktop for Mac should include Docker Compose v2. Please ensure Docker Desktop is up to date."
     exit 1
   fi
 }
@@ -66,23 +76,6 @@ get_uninstall_confirmation(){
       exit 0
       ;;
   esac
-}
-
-ensure_docker_installed() {
-    if ! command -v docker &> /dev/null; then
-        echo "Unable to find Docker. There may be a problem with your Docker installation."
-        exit 1
-    fi
-}
-
-check_docker_compose() {
-  # Check if 'docker compose' (v2 plugin) is available
-  if ! docker compose version &>/dev/null; then
-    echo -e "${RED}#${RESET} Docker Compose v2 is not installed or not available as a Docker plugin."
-    echo -e "${YELLOW}#${RESET} This script requires 'docker compose' (v2), not 'docker-compose' (v1)."
-    echo -e "${YELLOW}#${RESET} Please read the Docker documentation at https://docs.docker.com/compose/install/ for instructions on how to install Docker Compose v2."
-    exit 1
-  fi
 }
 
 storage_cleanup() {
@@ -111,7 +104,7 @@ uninstall_nomad() {
 
     # Stop and remove all containers where name starts with "nomad_"
     echo "Stopping and removing all Project N.O.M.A.D. app containers..."
-    docker ps -a --filter "name=^nomad_" --format "{{.Names}}" | xargs -r docker rm -f
+    docker ps -a --filter "name=^nomad_" --format "{{.Names}}" | xargs docker rm -f 2>/dev/null
     echo "Allowing some time for app containers to stop..."
     sleep 5
 
@@ -136,7 +129,6 @@ uninstall_nomad() {
 #                                                                                       Main                                                                                                      #
 #                                                                                                                                                                                                 #
 ###################################################################################################################################################################################################
-check_has_sudo
 check_current_directory
 ensure_management_compose_file_exists
 ensure_docker_installed

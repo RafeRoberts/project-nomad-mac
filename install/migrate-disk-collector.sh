@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Project N.O.M.A.D. — Disk Collector Migration Script
+# Project N.O.M.A.D. — Disk Collector Migration Script (macOS)
 #
-# Script                | Project N.O.M.A.D. Disk Collector Migration Script
+# Script                | Project N.O.M.A.D. Disk Collector Migration Script (macOS)
 # Version               | 1.0.0
 # Author                | Crosstalk Solutions, LLC
 # Website               | https://crosstalksolutions.com
@@ -15,11 +15,12 @@
 #   cleared and Docker would create a directory at the mount point instead of a file.
 #
 #   The new approach uses a disk-collector sidecar container that reads host
-#   disk info via the /:/host:ro,rslave bind-mount pattern (same pattern as Prometheus
-#   node-exporter, and no SYS_ADMIN or privileged capabilities required) and writes directly to
-#   /opt/project-nomad/storage/nomad-disk-info.json, which the admin container
-#   already reads via its existing storage bind-mount. Thus, no admin image update
-#   or new volume mounts required.
+#   disk info via the /:/host:ro bind-mount pattern and writes directly to
+#   ~/project-nomad/storage/nomad-disk-info.json, which the admin container
+#   already reads via its existing storage bind-mount.
+#
+#   Note: On macOS (Docker Desktop), disk info reflects the Docker VM's
+#   virtual disk rather than the Mac's actual drives.
 
 ###############################################################################
 # Color Codes
@@ -35,7 +36,7 @@ WHITE_R='\033[39m'
 # Constants
 ###############################################################################
 
-NOMAD_DIR="/opt/project-nomad"
+NOMAD_DIR="$HOME/project-nomad"
 COMPOSE_FILE="${NOMAD_DIR}/compose.yml"
 COMPOSE_PROJECT_NAME="project-nomad"
 
@@ -50,16 +51,6 @@ check_is_bash() {
     exit 1
   fi
   echo -e "${GREEN}#${RESET} Running in bash.\n"
-}
-
-check_has_sudo() {
-  if sudo -n true 2>/dev/null; then
-    echo -e "${GREEN}#${RESET} Sudo permissions confirmed.\n"
-  else
-    echo -e "${RED}#${RESET} This script requires sudo permissions."
-    echo -e "${RED}#${RESET} Example: sudo bash $(basename "$0")"
-    exit 1
-  fi
 }
 
 check_confirmation() {
@@ -83,8 +74,8 @@ check_docker_running() {
     echo -e "${RED}#${RESET} Docker is not installed. Cannot proceed."
     exit 1
   fi
-  if ! systemctl is-active --quiet docker; then
-    echo -e "${RED}#${RESET} Docker is not running. Please start Docker and try again."
+  if ! docker info &>/dev/null; then
+    echo -e "${RED}#${RESET} Docker is not running. Please open Docker Desktop and try again."
     exit 1
   fi
   echo -e "${GREEN}#${RESET} Docker is running.\n"
@@ -138,7 +129,7 @@ remove_old_bind_mount() {
   fi
 
   echo -e "${YELLOW}#${RESET} Removing old /tmp/nomad-disk-info.json bind-mount from admin volumes..."
-  sed -i '/\/tmp\/nomad-disk-info\.json:\/app\/storage\/nomad-disk-info\.json/d' "$COMPOSE_FILE"
+  sed -i '' '/\/tmp\/nomad-disk-info\.json:\/app\/storage\/nomad-disk-info\.json/d' "$COMPOSE_FILE"
 
   if grep -q 'nomad-disk-info\.json' "$COMPOSE_FILE"; then
     echo -e "${RED}#${RESET} Failed to remove old bind-mount from compose.yml. Please remove it manually:"
@@ -166,8 +157,8 @@ add_disk_collector_service() {
     print "    container_name: nomad_disk_collector"
     print "    restart: unless-stopped"
     print "    volumes:"
-    print "      - /:/host:ro,rslave  # Read-only view of host FS with rslave propagation so /sys and /proc submounts are visible"
-    print "      - /opt/project-nomad/storage:/storage  # Shared storage dir — disk info written here is read by the admin container"
+    print "      - /:/host:ro  # Read-only view of host FS (rslave not supported on Docker Desktop for Mac)"
+    print "      - '"${NOMAD_DIR}"'/storage:/storage"
     print ""
   }
   {print}' "$COMPOSE_FILE" > "${COMPOSE_FILE}.tmp" && mv "${COMPOSE_FILE}.tmp" "$COMPOSE_FILE"
@@ -181,8 +172,6 @@ add_disk_collector_service() {
 }
 
 # Step 5 — Pull new image and restart the full stack
-# This will re-create the admin container and drop the old /tmp bind, and
-# also starts the new disk-collector sidecar we just added to compose.yml
 restart_stack() {
   echo -e "${YELLOW}#${RESET} Pulling latest images (including disk-collector)..."
   if ! docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" pull; then
@@ -217,7 +206,6 @@ echo -e "${GREEN}#${RESET}      Project N.O.M.A.D. — Disk Collector Migration 
 echo -e "${GREEN}#########################################################################${RESET}\n"
 
 check_is_bash
-check_has_sudo
 check_confirmation
 check_docker_running
 check_compose_file
@@ -247,4 +235,5 @@ echo -e "${GREEN}#${RESET} The disk-collector sidecar is now running and will up
 echo -e "${GREEN}#${RESET} every 2 minutes. The /api/system/info endpoint will return disk data"
 echo -e "${GREEN}#${RESET} after the first collector write (~5 seconds after startup)."
 echo -e "${GREEN}#${RESET}"
+echo -e "${GREEN}#${RESET} Note: On macOS, disk info reflects the Docker VM's virtual disk."
 echo -e "${GREEN}#########################################################################${RESET}\n"
