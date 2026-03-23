@@ -234,6 +234,24 @@ download_management_compose_file() {
   local db_root_password=$(generateRandomPass)
   local db_user_password=$(generateRandomPass)
 
+  # Adapt the upstream compose file for macOS
+  echo -e "${YELLOW}#${RESET} Adapting compose file for macOS...\\n"
+
+  # Replace host-side /opt/project-nomad paths with actual install path.
+  # The updater mount has both host:container paths — we need to keep the container
+  # path as /opt/project-nomad since the sidecar script expects it there.
+  # First, fix the updater line specifically (host:/opt/project-nomad:/opt/project-nomad -> host:NOMAD_DIR:/opt/project-nomad)
+  sed -i '' "s|/opt/project-nomad:/opt/project-nomad|${NOMAD_DIR}:/opt/project-nomad|g" "$compose_file_path"
+  # Then replace the remaining host-side /opt/project-nomad paths (storage, mysql, redis)
+  sed -i '' "s|/opt/project-nomad|${NOMAD_DIR}|g" "$compose_file_path"
+
+  # Remove the extra_hosts block (Docker Desktop for Mac provides host.docker.internal natively)
+  sed -i '' '/extra_hosts:/d' "$compose_file_path"
+  sed -i '' '/host\.docker\.internal:host-gateway/d' "$compose_file_path"
+
+  # Remove rslave mount propagation (not supported on Docker Desktop for Mac)
+  sed -i '' 's|/:/host:ro,rslave|/:/host:ro|g' "$compose_file_path"
+
   # Inject dynamic env values into the compose file
   echo -e "${YELLOW}#${RESET} Configuring docker-compose file env variables...\\n"
   sed -i '' "s|URL=replaceme|URL=http://${local_ip_address}:8080|g" "$compose_file_path"
@@ -242,9 +260,6 @@ download_management_compose_file() {
   sed -i '' "s|DB_PASSWORD=replaceme|DB_PASSWORD=${db_user_password}|g" "$compose_file_path"
   sed -i '' "s|MYSQL_ROOT_PASSWORD=replaceme|MYSQL_ROOT_PASSWORD=${db_root_password}|g" "$compose_file_path"
   sed -i '' "s|MYSQL_PASSWORD=replaceme|MYSQL_PASSWORD=${db_user_password}|g" "$compose_file_path"
-
-  # Replace the __NOMAD_DIR__ placeholder with the actual install path
-  sed -i '' "s|__NOMAD_DIR__|${NOMAD_DIR}|g" "$compose_file_path"
 
   echo -e "${GREEN}#${RESET} Docker compose file configured successfully.\\n"
 }
